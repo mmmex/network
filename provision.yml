@@ -1,0 +1,97 @@
+# code: language=ansible
+---
+- name: Setup office1Router and office2Router
+  hosts: 
+    - office1Router
+    - office2Router
+  become: true
+  ignore_errors: true
+  tasks:
+    - name: Set ip forwarding to 1 on {{ inventory_hostname }}
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+    - name: Replace default route on {{ inventory_hostname }}
+      shell: ip route del default via 10.0.2.2;ip route add default via 192.168.255.9
+
+- name: Setup centralRouter
+  hosts: centralRouter
+  become: true
+  ignore_errors: true
+  tasks:
+  - name: Setup routes and firewall nat rule
+    shell: |
+      ip route del default via 10.0.2.2
+      ip route add default via 192.168.255.1
+      ip route add 192.168.1.192/26 via 192.168.255.11
+      ip route add 192.168.1.128/26 via 192.168.255.11
+      ip route add 192.168.1.0/25 via 192.168.255.11
+      ip route add 192.168.2.0/26 via 192.168.255.10
+      ip route add 192.168.2.64/26 via 192.168.255.10
+      ip route add 192.168.2.128/26 via 192.168.255.10
+      ip route add 192.168.2.192/26 via 192.168.255.10
+  - name: Iptables flush nat table
+    iptables:
+      table: nat
+      flush: yes
+  - name: Iptables setup nat rule
+    iptables:
+      table: nat
+      chain: POSTROUTING
+      destination: '!192.168.0.0/16'
+      out_interface: eth1
+      jump: MASQUERADE
+
+- name: Setup inetRouter
+  hosts: inetRouter
+  become: true
+  gather_facts: False
+  tasks:
+  - name: Set ip forwarding to 1
+    sysctl:
+      name: net.ipv4.ip_forward
+      value: '1'
+      sysctl_set: yes
+      state: present
+      reload: yes
+  - name: Iptables flush nat table
+    iptables:
+      table: nat
+      flush: yes
+  - name: Iptables setup nat rule
+    iptables:
+      table: nat
+      chain: POSTROUTING
+      destination: '!192.168.0.0/16'
+      out_interface: eth0
+      jump: MASQUERADE
+
+- name: Setup centralServer
+  hosts: centralServer
+  become: true
+  gather_facts: False
+  ignore_errors: true
+  tasks:
+  - name: Replace default route
+    shell: ip route del default via 10.0.2.2;ip route add default via 192.168.0.1
+
+- name: Setup office1Server
+  hosts: office1Server
+  become: true
+  gather_facts: False
+  ignore_errors: true
+  tasks:
+  - name: Replace default route
+    shell: ip route del default via 10.0.2.2;ip route add default via 192.168.2.65
+
+- name: Setup office2Server
+  hosts: office2Server
+  become: true
+  gather_facts: False
+  ignore_errors: true
+  tasks:
+  - name: Replace default route
+    shell: ip route del default via 10.0.2.2;ip route add default via 192.168.1.129
